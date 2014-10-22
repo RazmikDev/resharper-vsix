@@ -6,97 +6,122 @@ using JetBrains.Util;
 
 namespace JetBrains.ReSharper.Plugins.Vsix2ReSharper.Implementation
 {
-  // TODO: Maybe NuSpec should be merged with these classes?
-  public class VsixExtension : IExtension
-  {
-    private readonly NuSpec nuSpec;
-    private readonly FileSystemPath location;
-    private readonly ExtensionLocations extensionLocations;
+	// TODO: Maybe NuSpec should be merged with these classes?
+	public class VsixExtension : IExtension
+	{
+		private readonly NuSpec nuSpec;
+		private readonly FileSystemPath location;
+		private readonly ExtensionLocations extensionLocations;
 
-    public VsixExtension(IExtensionProvider provider, NuSpec nuSpec, FileSystemPath location, 
-      ExtensionLocations extensionLocations)
-    {
-      var source = GetType().Name;
+		public VsixExtension(IExtensionProvider provider, NuSpec nuSpec, FileSystemPath location,
+		  ExtensionLocations extensionLocations)
+		{
+			var source = GetType().Name;
 
-      this.nuSpec = nuSpec;
-      this.location = location;
-      this.extensionLocations = extensionLocations;
+			this.nuSpec = nuSpec;
+			this.location = location;
+			this.extensionLocations = extensionLocations;
 
-      Version = new Version(nuSpec.Version);
-      Metadata = new VsixExtensionMetadata(nuSpec);
-      Supported = true; // TODO
-      Enabled = new Property<bool?>(string.Format("{0}::Enabled", source), null);
-      RuntimeInfoRecords = new ListEvents<ExtensionRecord>(string.Format("{0}::RuntimeInfoRecords", source));
-      Source = provider;
-    }
+			SemanticVersion version;
+			if (Util.SemanticVersion.TryParse(nuSpec.Version, out version))
+			{
+				Version = version;
+			}
+			else
+			{
+				throw new ArgumentException("Provided nuget package version not satisfies the semantic version specification.", "nuSpec");
+			}
 
-    public IEnumerable<FileSystemPath> GetFiles(string fileType)
-    {
-      this.AddInfo(this, string.Format("Looking for '{0}' files in the {1} package folder at {2}", fileType, Id, location.QuoteIfNeeded()));
+			Metadata = new VsixExtensionMetadata(nuSpec);
+			Supported = true; // TODO
+			Enabled = new Property<bool?>(string.Format("{0}::Enabled", source), null);
+			RuntimeInfoRecords = new ListEvents<ExtensionRecord>(string.Format("{0}::RuntimeInfoRecords", source));
+			Source = provider;
+		}
 
-      foreach (var searchPath in extensionLocations.ExtensionComponentSearchPaths)
-      {
-        var path = location.Combine(searchPath.Combine(fileType));
-        var files = path.GetChildFiles(flags: PathSearchFlags.RecurseIntoSubdirectories);
+		public IEnumerable<FileSystemPath> GetFiles(string fileType)
+		{
+			this.AddInfo(this, string.Format("Looking for '{0}' files in the {1} package folder at {2}", fileType, Id, location.QuoteIfNeeded()));
 
-        ReportFiles(fileType, path, files);
+			foreach (var searchPath in extensionLocations.ExtensionComponentSearchPaths)
+			{
+				var path = location.Combine(searchPath.Combine(fileType));
+				var files = path.GetChildFiles(flags: PathSearchFlags.RecurseIntoSubdirectories);
 
-        foreach (var file in files)
-          yield return file;
-      }
-    }
+				ReportFiles(fileType, path, files);
 
-    private void ReportFiles(string fileType, FileSystemPath root, IList<FileSystemPath> files)
-    {
-      this.AddInfo(this, files.Any()
-          ? string.Format("Found {0} files under {1}", files.Count, root)
-          : string.Format("The package contains no files in {0}", root));
-    }
+				foreach (var file in files)
+					yield return file;
+			}
+		}
 
-    public string Id { get { return nuSpec.Id; } }
-    public Version Version { get; private set; }
-    public string SemanticVersion { get { return nuSpec.Version; } }
-    public IExtensionMetadata Metadata { get; private set; }
-    public bool Supported { get; private set; }
-    public IProperty<bool?> Enabled { get; private set; }
-    public ListEvents<ExtensionRecord> RuntimeInfoRecords { get; private set; }
-    public IExtensionProvider Source { get; private set; }
+		private void ReportFiles(string fileType, FileSystemPath root, IList<FileSystemPath> files)
+		{
+			this.AddInfo(this, files.Any()
+				? string.Format("Found {0} files under {1}", files.Count, root)
+				: string.Format("The package contains no files in {0}", root));
+		}
 
-    public class VsixExtensionMetadata : IExtensionMetadata
-    {
-      private readonly NuSpec nuSpec;
+		public string Id { get { return nuSpec.Id; } }
 
-      public VsixExtensionMetadata(NuSpec nuSpec)
-      {
-        this.nuSpec = nuSpec;
+		public SemanticVersion Version { get; private set; }
+		public string SemanticVersion { get { return nuSpec.Version; } }
+		public IExtensionMetadata Metadata { get; private set; }
+		public bool Supported { get; private set; }
+		public IProperty<bool?> Enabled { get; private set; }
+		public ListEvents<ExtensionRecord> RuntimeInfoRecords { get; private set; }
+		public IExtensionProvider Source { get; private set; }
 
-        Authors = nuSpec.Authors;
-        Owners = nuSpec.Owners;
-        Tags = nuSpec.Tags;
+		public class VsixExtensionMetadata : IExtensionMetadata
+		{
+			private readonly NuSpec nuSpec;
 
-        IconUrl = nuSpec.IconUrl;
-        LicenseUrl = nuSpec.LicenseUrl;
-        ProjectUrl = nuSpec.ProjectUrl;
+			public VsixExtensionMetadata(NuSpec nuSpec)
+			{
+				this.nuSpec = nuSpec;
 
-        Created = null;
-        PreRelease = nuSpec.Version == Version.Parse(nuSpec.Version).ToString();
-      }
+				Authors = nuSpec.Authors;
+				Owners = nuSpec.Owners;
+				Tags = nuSpec.Tags;
 
-      public string Title { get { return nuSpec.Title; } }
-      public string Description { get { return nuSpec.Description; } }
-      public string Summary { get { return nuSpec.Summary; } }
-      public string Copyright { get { return nuSpec.Copyright; } }
-      public IEnumerable<string> Authors { get; private set; }
-      public IEnumerable<string> Owners { get; private set; }
-      public IEnumerable<string> Tags { get; private set; }
-      // TODO: Set dependencies
-      public IEnumerable<string> DependencyIds { get; private set; }
-      public IEnumerable<string> DependencyDescriptions { get; private set; }
-      public Uri IconUrl { get; private set; }
-      public Uri LicenseUrl { get; private set; }
-      public Uri ProjectUrl { get; private set; }
-      public DateTimeOffset? Created { get; private set; }
-      public bool PreRelease { get; private set; }
-    }
-  }
+				IconUrl = nuSpec.IconUrl;
+				LicenseUrl = nuSpec.LicenseUrl;
+				ProjectUrl = nuSpec.ProjectUrl;
+
+				Created = null;
+				PreRelease = nuSpec.Version == Util.SemanticVersion.Parse(nuSpec.Version).ToString();
+			}
+
+			public string Title { get { return nuSpec.Title; } }
+			public string Description { get { return nuSpec.Description; } }
+			public string Summary { get { return nuSpec.Summary; } }
+			public string Copyright { get { return nuSpec.Copyright; } }
+			public IEnumerable<string> Authors { get; private set; }
+			public IEnumerable<string> Owners { get; private set; }
+			public IEnumerable<string> Tags { get; private set; }
+			// TODO: Set dependencies
+			public IEnumerable<string> DependencyIds { get; private set; }
+			public IEnumerable<string> DependencyDescriptions { get; private set; }
+			public Uri IconUrl { get; private set; }
+			public Uri LicenseUrl { get; private set; }
+			public Uri ProjectUrl { get; private set; }
+			public DateTimeOffset? Created { get; private set; }
+			public bool PreRelease { get; private set; }
+		}
+
+		public void PutData<T>(Key<T> key, T val) where T : class
+		{
+			throw new NotImplementedException();
+		}
+
+		public T GetData<T>(Key<T> key) where T : class
+		{
+			throw new NotImplementedException();
+		}
+
+		public IEnumerable<KeyValuePair<object, object>> EnumerateData()
+		{
+			throw new NotImplementedException();
+		}
+	}
 }
